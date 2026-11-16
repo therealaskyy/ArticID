@@ -1,0 +1,8 @@
+{
+  "name": "artic-id",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Artic ID: account unico per i giochi di Artic Studio",
+  "engines": { "node": ">=18" },
+  "dependencies": { "@upstash/redis": "^1.34.0" }
+}
