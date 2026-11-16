@@ -35,7 +35,8 @@ function methodOnly(req, res, method) {
 function sameOrigin(req) {
   const o = req.headers.origin;
   if (!o) return true; // client nativi o server-to-server
-  try { return new URL(o).host === req.headers.host; } catch (e) { return false; }
+  try { if (new URL(o).host === req.headers.host) return true; } catch (e) { return false; }
+  return allowedOrigins().includes(o); // giochi di Artic Studio autorizzati
 }
 
 function ipKey(req) {
@@ -97,14 +98,14 @@ async function createSession(uid) {
   return token;
 }
 
-function tokenFrom(req) {
+function tokenFrom(req, bearerOnly) {
   const a = String(req.headers.authorization || '');
   if (a.startsWith('Bearer ')) return a.slice(7).trim();
-  return parseCookies(req)[COOKIE] || null;
+  return bearerOnly ? null : (parseCookies(req)[COOKIE] || null);
 }
 
-async function getSession(req) {
-  const t = tokenFrom(req);
+async function getSession(req, bearerOnly) {
+  const t = tokenFrom(req, bearerOnly);
   if (!t) return null;
   const h = sha(t);
   const s = await redis.get('sess:' + h);
@@ -144,6 +145,7 @@ function newAid() {
   return 'AID-' + s.slice(0, 4) + '-' + s.slice(4);
 }
 
+const SLOT_RE = /^[a-z0-9_-]{1,32}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const NICK_RE = /^[A-Za-z0-9_.-]{3,16}$/;
 const passwordOk = (p) => typeof p === 'string' && p.length >= 8 && p.length <= 128;
@@ -158,7 +160,8 @@ function cors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', o);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '600');
   }
   if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return true; }
   return false;
@@ -169,6 +172,6 @@ const body = (req) => (req.body && typeof req.body === 'object' ? req.body : {})
 module.exports = {
   redis, crypto, send, methodOnly, sameOrigin, ipKey, limit, sha, hashPassword, verifyPassword,
   dummyVerify, setSessionCookie, clearSessionCookie, createSession, getSession, destroySession,
-  destroyUserSessions, getUser, publicUser, ageFrom, newAid, EMAIL_RE, NICK_RE, passwordOk,
+  destroyUserSessions, getUser, publicUser, ageFrom, newAid, EMAIL_RE, NICK_RE, SLOT_RE, passwordOk,
   allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION,
 };

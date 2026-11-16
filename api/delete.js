@@ -14,6 +14,9 @@ module.exports = async (req, res) => {
     if (!(await L.verifyPassword(String(L.body(req).password || ''), user.passHash)))
       return L.send(res, 401, { error: 'Password non corretta.' });
 
+    const slots = await L.redis.smembers('saves:' + user.id);
+    if (slots && slots.length) await L.redis.del(...slots.map((x) => 'save:' + user.id + ':' + x));
+    await L.redis.del('saves:' + user.id);
     await L.destroyUserSessions(user.id);
     await L.redis.del('email:' + user.email, 'nick:' + user.nick.toLowerCase(), 'user:' + user.id);
     L.clearSessionCookie(res);

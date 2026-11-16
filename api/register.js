@@ -2,6 +2,7 @@
 const L = require('./_lib');
 
 module.exports = async (req, res) => {
+  if (L.cors(req, res)) return;
   if (!L.methodOnly(req, res, 'POST')) return;
   if (!L.sameOrigin(req)) return L.send(res, 403, { error: 'Richiesta non consentita.' });
   try {
