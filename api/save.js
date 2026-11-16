@@ -11,16 +11,16 @@ module.exports = async (req, res) => {
   if (L.cors(req, res)) return;
   if (req.method !== 'GET' && req.method !== 'PUT') {
     res.setHeader('Allow', 'GET, PUT');
-    return L.send(res, 405, { error: 'Metodo non consentito.' });
+    return L.send(res, 405, { error: 'Method not allowed.' });
   }
   try {
     const s = await L.getSession(req, true);
-    if (!s) return L.send(res, 401, { error: 'Non hai effettuato l’accesso.' });
+    if (!s) return L.send(res, 401, { error: 'You are not signed in.' });
     const slot = String((req.query && req.query.slot) || 'main');
     if (!L.SLOT_RE.test(slot))
-      return L.send(res, 400, { error: 'Nome slot non valido (usa a-z, 0-9, trattino, underscore).' });
+      return L.send(res, 400, { error: 'Invalid slot name (use a-z, 0-9, hyphen, underscore).' });
     if (!(await L.limit('save:' + s.uid, 60, 60)))
-      return L.send(res, 429, { error: 'Troppi salvataggi. Riprova tra un minuto.' });
+      return L.send(res, 429, { error: 'Too many saves. Please try again in a minute.' });
 
     const key = 'save:' + s.uid + ':' + slot;
     const cur = await L.redis.get(key);
@@ -28,18 +28,18 @@ module.exports = async (req, res) => {
 
     const b = L.body(req);
     if (b.data === undefined || b.data === null)
-      return L.send(res, 400, { error: 'Manca il campo data.' });
+      return L.send(res, 400, { error: 'The data field is missing.' });
     if (Buffer.byteLength(JSON.stringify(b.data)) > MAX_BYTES)
-      return L.send(res, 413, { error: 'Il salvataggio è troppo grande (massimo 200 KB).' });
+      return L.send(res, 413, { error: 'The save is too large (200 KB maximum).' });
 
     const curRev = cur ? cur.rev : 0;
     const baseRev = Number.isInteger(b.baseRev) ? b.baseRev : 0;
     if (baseRev !== curRev && b.force !== true)
-      return L.send(res, 409, { error: 'Il salvataggio nel cloud è più recente.', save: cur });
+      return L.send(res, 409, { error: 'The cloud save is newer.', save: cur });
 
     if (!cur) {
       const n = await L.redis.scard('saves:' + s.uid);
-      if (n >= MAX_SLOTS) return L.send(res, 400, { error: 'Hai raggiunto il massimo di ' + MAX_SLOTS + ' slot.' });
+      if (n >= MAX_SLOTS) return L.send(res, 400, { error: 'You have reached the maximum of ' + MAX_SLOTS + ' slots.' });
     }
     const save = { data: b.data, rev: curRev + 1, updatedAt: new Date().toISOString() };
     await L.redis.set(key, save);
@@ -47,6 +47,6 @@ module.exports = async (req, res) => {
     return L.send(res, 200, { save });
   } catch (e) {
     console.error('save', e);
-    return L.send(res, 500, { error: 'Errore del server. Riprova tra poco.' });
+    return L.send(res, 500, { error: 'Server error. Please try again shortly.' });
   }
 };

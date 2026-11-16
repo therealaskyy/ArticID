@@ -27,7 +27,7 @@ function send(res, status, body) {
 function methodOnly(req, res, method) {
   if (req.method === method) return true;
   res.setHeader('Allow', method);
-  send(res, 405, { error: 'Metodo non consentito.' });
+  send(res, 405, { error: 'Method not allowed.' });
   return false;
 }
 
@@ -167,11 +167,50 @@ function cors(req, res) {
   return false;
 }
 
+// ---- Email codes (2-step verification for sign-in, sign-up and password change) ----
+const CODE_TTL = 600; // 10 minutes
+const CODE_TRIES = 5;
+
+async function sendEmail(to, subject, text) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) { console.error('RESEND_API_KEY missing: cannot send email'); return false; }
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: process.env.RESEND_FROM, to: [to], subject, text }),
+    });
+    if (!r.ok) console.error('resend', r.status, await r.text());
+    return r.ok;
+  } catch (e) { console.error('resend', e); return false; }
+}
+
+const PURPOSE_TEXT = {
+  login: 'sign in to your Artic ID',
+  register: 'finish creating your Artic ID',
+  change: 'change your Artic ID password',
+};
+
+// Creates a pending action and emails a 6-digit code. Returns { id } or { error, status }.
+async function startChallenge(purpose, email, data) {
+  if (!(await limit('code-mail:' + sha(email), 6, 3600)))
+    return { status: 429, error: 'Too many codes requested. Please try again in an hour.' };
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const id = crypto.randomBytes(24).toString('base64url');
+  const k = 'ch:' + sha(id);
+  await redis.set(k, { purpose, email, codeHash: sha(id + ':' + code), data }, { ex: CODE_TTL });
+  const ok = await sendEmail(email, code + ' is your Artic ID code',
+    'Hi!\n\nYour verification code to ' + PURPOSE_TEXT[purpose] + ' is:\n\n' + code + '\n\n' +
+    'It expires in 10 minutes. If this wasn’t you, ignore this email. If you didn’t just enter your password, change it.\n\nArtic Studio');
+  if (!ok) { await redis.del(k); return { status: 503, error: 'We couldn’t send the email. Please try again later.' }; }
+  return { id };
+}
+
 const body = (req) => (req.body && typeof req.body === 'object' ? req.body : {});
 
 module.exports = {
   redis, crypto, send, methodOnly, sameOrigin, ipKey, limit, sha, hashPassword, verifyPassword,
   dummyVerify, setSessionCookie, clearSessionCookie, createSession, getSession, destroySession,
   destroyUserSessions, getUser, publicUser, ageFrom, newAid, EMAIL_RE, NICK_RE, SLOT_RE, passwordOk,
-  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION,
+  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION, sendEmail, startChallenge, CODE_TTL, CODE_TRIES,
 };

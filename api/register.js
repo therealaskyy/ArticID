@@ -1,13 +1,14 @@
 'use strict';
 const L = require('./_lib');
 
+// Step 1 of 2: validates the form and emails a 6-digit code. The account is created in POST /api/verify.
 module.exports = async (req, res) => {
   if (L.cors(req, res)) return;
   if (!L.methodOnly(req, res, 'POST')) return;
-  if (!L.sameOrigin(req)) return L.send(res, 403, { error: 'Richiesta non consentita.' });
+  if (!L.sameOrigin(req)) return L.send(res, 403, { error: 'Request not allowed.' });
   try {
     if (!(await L.limit('reg:' + L.ipKey(req), 10, 3600)))
-      return L.send(res, 429, { error: 'Troppi tentativi. Riprova tra un’ora.' });
+      return L.send(res, 429, { error: 'Too many attempts. Please try again in an hour.' });
 
     const b = L.body(req);
     const nick = String(b.nick || '').trim();
@@ -16,39 +17,31 @@ module.exports = async (req, res) => {
     const birth = String(b.birthdate || '');
 
     if (!L.NICK_RE.test(nick))
-      return L.send(res, 400, { error: 'Il nome giocatore deve avere 3–16 caratteri: lettere, numeri, punto, trattino o underscore.' });
+      return L.send(res, 400, { error: 'Player name must be 3–16 characters: letters, numbers, dot, hyphen or underscore.' });
     if (!L.EMAIL_RE.test(email) || email.length > 254)
-      return L.send(res, 400, { error: 'Inserisci un’email valida.' });
+      return L.send(res, 400, { error: 'Enter a valid email address.' });
     if (!L.passwordOk(password))
-      return L.send(res, 400, { error: 'La password deve avere almeno 8 caratteri.' });
+      return L.send(res, 400, { error: 'Password must be at least 8 characters.' });
     const age = L.ageFrom(birth);
-    if (age === null) return L.send(res, 400, { error: 'Inserisci una data di nascita valida.' });
+    if (age === null) return L.send(res, 400, { error: 'Enter a valid date of birth.' });
     if (age < L.MIN_AGE)
-      return L.send(res, 403, { error: `Per creare un Artic ID devi avere almeno ${L.MIN_AGE} anni. Chiedi a un genitore.` });
+      return L.send(res, 403, { error: `You must be at least ${L.MIN_AGE} years old to create an Artic ID. Ask a parent.` });
     if (b.terms !== true)
-      return L.send(res, 400, { error: 'Devi accettare i Termini di servizio e l’Informativa sulla privacy.' });
+      return L.send(res, 400, { error: 'You must accept the Terms of Service and the Privacy Policy.' });
 
-    const id = L.crypto.randomUUID();
-    if (!(await L.redis.set('email:' + email, id, { nx: true })))
-      return L.send(res, 409, { error: 'Questa email è già registrata. Prova ad accedere.' });
-    if (!(await L.redis.set('nick:' + nick.toLowerCase(), id, { nx: true }))) {
-      await L.redis.del('email:' + email);
-      return L.send(res, 409, { error: 'Questo nome giocatore è già preso. Scegline un altro.' });
-    }
+    if (await L.redis.exists('email:' + email))
+      return L.send(res, 409, { error: 'This email is already registered. Try signing in.' });
+    if (await L.redis.exists('nick:' + nick.toLowerCase()))
+      return L.send(res, 409, { error: 'That player name is already taken. Pick another one.' });
 
-    const now = new Date().toISOString();
-    const user = {
-      id, aid: L.newAid(), nick, email, birthdate: birth,
-      passHash: await L.hashPassword(password),
-      termsVersion: L.TERMS_VERSION, termsAcceptedAt: now, createdAt: now,
-    };
-    await L.redis.set('user:' + id, user);
-
-    const token = await L.createSession(id);
-    L.setSessionCookie(res, token);
-    return L.send(res, 201, { token, user: L.publicUser(user) });
+    const c = await L.startChallenge('register', email, {
+      nick, email, birthdate: birth, passHash: await L.hashPassword(password),
+      termsAcceptedAt: new Date().toISOString(),
+    });
+    if (c.error) return L.send(res, c.status, { error: c.error });
+    return L.send(res, 200, { step: 'code', challenge: c.id });
   } catch (e) {
     console.error('register', e);
-    return L.send(res, 500, { error: 'Errore del server. Riprova tra poco.' });
+    return L.send(res, 500, { error: 'Server error. Please try again shortly.' });
   }
 };

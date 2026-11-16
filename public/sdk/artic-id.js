@@ -55,7 +55,7 @@
   }
 
   function call(method, slot, body) {
-    if (!session) return Promise.reject(new Error('Non hai effettuato l’accesso.'));
+    if (!session) return Promise.reject(new Error('You are not signed in.'));
     return fetch(BASE + '/api/save?slot=' + encodeURIComponent(slot || 'main'), {
       method: method,
       headers: { Authorization: 'Bearer ' + session.token, 'Content-Type': 'application/json' },
@@ -63,7 +63,7 @@
     }).then(function (r) {
       return r.json().then(function (d) {
         if (r.status === 409) { var e = new Error('conflict'); e.conflict = true; e.save = d.save; throw e; }
-        if (!r.ok) throw new Error(d.error || 'Errore');
+        if (!r.ok) throw new Error(d.error || 'Error');
         return d.save;
       });
     });

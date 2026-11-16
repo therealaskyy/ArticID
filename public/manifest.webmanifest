@@ -1,7 +1,7 @@
 {
   "name": "Artic ID",
   "short_name": "Artic ID",
-  "description": "L’account unico dei giochi di Artic Studio.",
+  "description": "One account for all Artic Studio games.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08121F",
