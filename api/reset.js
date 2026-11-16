@@ -19,7 +19,10 @@ module.exports = async (req, res) => {
     await L.redis.set('user:' + user.id, user);
     await L.redis.del(k);
     await L.destroyUserSessions(user.id); // esce da tutti i dispositivi
-    return L.send(res, 200, { ok: true });
+    // Il link arriva via email, quindi l'identità è provata: apre subito una nuova sessione.
+    const token = await L.createSession(user.id);
+    L.setSessionCookie(res, token);
+    return L.send(res, 200, { ok: true, token, user: L.publicUser(user) });
   } catch (e) {
     console.error('reset', e);
     return L.send(res, 500, { error: 'Errore del server.' });

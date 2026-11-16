@@ -24,8 +24,16 @@ module.exports = async (req, res) => {
     const token = L.crypto.randomBytes(32).toString('base64url');
     await L.redis.set('reset:' + L.sha(token), { uid }, { ex: 3600 });
 
+    // Se la richiesta arriva da un gioco autorizzato, il link nell'email lo riporta indietro dopo il reset.
+    let ret = '';
+    try {
+      const u = new URL(String(L.body(req).return || ''));
+      if (L.allowedOrigins().includes(u.origin)) ret = u.href.split('#')[0];
+    } catch (e) {}
+
     const base = process.env.APP_URL || ('https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL);
-    const link = base.replace(/\/$/, '') + '/?reset=' + token;
+    const link = base.replace(/\/$/, '') + '/?reset=' + token +
+      (ret ? '&return=' + encodeURIComponent(ret) : '');
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
