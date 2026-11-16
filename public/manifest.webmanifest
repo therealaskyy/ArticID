@@ -1,0 +1,13 @@
+{
+  "name": "Artic ID",
+  "short_name": "Artic ID",
+  "description": "L’account unico dei giochi di Artic Studio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08121F",
+  "theme_color": "#0B8FC4",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
