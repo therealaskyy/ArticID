@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
     const uid = await L.redis.get('email:' + email);
     if (!uid) return L.send(res, 200, generic);
 
-    if (!L.emailConfigured())
+    if (!L.emailConfigured('reset'))
       return L.send(res, 503, { error: 'Password recovery isn’t available yet. Please contact support.' });
 
     const token = L.crypto.randomBytes(32).toString('base64url');
@@ -31,10 +31,12 @@ module.exports = async (req, res) => {
 
     const base = process.env.APP_URL || ('https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL);
     const link = base.replace(/\/$/, '') + '/?reset=' + token + (ret ? '&return=' + encodeURIComponent(ret) : '');
+    const note = 'This link works for 1 hour. If this wasn’t you, you can ignore this email: your password won’t change.';
     await L.sendEmail(email, 'Reset your Artic ID password',
-      'Hi!\n\nYou asked to reset the password of your Artic ID.\n' +
-      'Open this link within 1 hour:\n' + link + '\n\n' +
-      'If this wasn’t you, ignore this email: your password won’t change.\n\nArtic Studio');
+      'Hi!\n\nYou asked to reset the password of your Artic ID.\nOpen this link within 1 hour:\n' + link + '\n\n' +
+      'If this wasn’t you, ignore this email: your password won’t change.\n\nArtic Studio',
+      { heading: 'Reset your password', intro: 'We received a request to reset the password of your Artic ID. Tap the button below to choose a new one.',
+        button_text: 'Reset password', button_url: link, note }, 'reset');
     return L.send(res, 200, generic);
   } catch (e) {
     console.error('forgot', e);

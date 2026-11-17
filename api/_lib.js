@@ -174,23 +174,38 @@ const CODE_TRIES = 5;
 // Email provider: EmailJS (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY), else Brevo, else Resend.
 // Brevo (BREVO_API_KEY + BREVO_FROM_EMAIL [+ BREVO_FROM_NAME]) or Resend (RESEND_API_KEY + RESEND_FROM).
 // Brevo only needs one verified sender address, no domain of your own.
-const emailjsReady = () => !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID &&
-  process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY);
-const emailConfigured = () => emailjsReady() || !!(process.env.BREVO_API_KEY || process.env.RESEND_API_KEY);
+// EmailJS needs two templates: EMAILJS_TEMPLATE_ID (verification codes) and EMAILJS_RESET_TEMPLATE_ID (password reset link).
+const emailjsReady = (kind) => !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY &&
+  (kind === 'reset' ? process.env.EMAILJS_RESET_TEMPLATE_ID : process.env.EMAILJS_TEMPLATE_ID));
+const emailConfigured = (kind) => emailjsReady(kind) || !!(process.env.BREVO_API_KEY || process.env.RESEND_API_KEY);
 
-async function sendEmail(to, subject, text) {
+// Variables every EmailJS template can use: logo, links and year for the footer.
+function emailBase() {
+  return (process.env.APP_URL || ('https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL)).replace(/\/$/, '');
+}
+function emailVars(extra) {
+  const base = emailBase();
+  return Object.assign({
+    logo_url: base + '/icon-192.png', site_url: base,
+    terms_url: base + '/terms', privacy_url: base + '/privacy',
+    year: String(new Date().getFullYear()),
+  }, extra || {});
+}
+
+// kind: 'code' (verification code) or 'reset' (password reset link). vars: extra EmailJS template variables.
+async function sendEmail(to, subject, text, vars, kind) {
   try {
-    if (emailjsReady()) {
-      // Template variables: {{to_email}}, {{subject}}, {{message}}
+    if (emailjsReady(kind)) {
+      // Template variables: to_email, subject, message (plain text) + logo_url, site_url, terms_url, privacy_url, year + vars
       const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_id: process.env.EMAILJS_SERVICE_ID,
-          template_id: process.env.EMAILJS_TEMPLATE_ID,
+          template_id: kind === 'reset' ? process.env.EMAILJS_RESET_TEMPLATE_ID : process.env.EMAILJS_TEMPLATE_ID,
           user_id: process.env.EMAILJS_PUBLIC_KEY,
           accessToken: process.env.EMAILJS_PRIVATE_KEY,
-          template_params: { to_email: to, subject, message: text },
+          template_params: Object.assign({ to_email: to, subject, message: text }, emailVars(vars)),
         }),
       });
       if (!r.ok) console.error('emailjs', r.status, await r.text());
@@ -236,9 +251,10 @@ async function startChallenge(purpose, email, data) {
   const id = crypto.randomBytes(24).toString('base64url');
   const k = 'ch:' + sha(id);
   await redis.set(k, { purpose, email, codeHash: sha(id + ':' + code), data }, { ex: CODE_TTL });
+  const note = 'This code expires in 10 minutes. If this wasn’t you, you can ignore this email. If you didn’t just enter your password, change it.';
   const ok = await sendEmail(email, code + ' is your Artic ID code',
-    'Hi!\n\nYour verification code to ' + PURPOSE_TEXT[purpose] + ' is:\n\n' + code + '\n\n' +
-    'It expires in 10 minutes. If this wasn’t you, ignore this email. If you didn’t just enter your password, change it.\n\nArtic Studio');
+    'Hi!\n\nYour verification code to ' + PURPOSE_TEXT[purpose] + ' is:\n\n' + code + '\n\n' + note + '\n\nArtic Studio',
+    { heading: 'Your verification code', intro: 'Use this code to ' + PURPOSE_TEXT[purpose] + ':', code, note }, 'code');
   if (!ok) { await redis.del(k); return { status: 503, error: 'We couldn’t send the email. Please try again later.' }; }
   return { id };
 }
@@ -249,5 +265,5 @@ module.exports = {
   redis, crypto, send, methodOnly, sameOrigin, ipKey, limit, sha, hashPassword, verifyPassword,
   dummyVerify, setSessionCookie, clearSessionCookie, createSession, getSession, destroySession,
   destroyUserSessions, getUser, publicUser, ageFrom, newAid, EMAIL_RE, NICK_RE, SLOT_RE, passwordOk,
-  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION, sendEmail, emailConfigured, startChallenge, CODE_TTL, CODE_TRIES,
+  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION, sendEmail, emailConfigured, emailBase, startChallenge, CODE_TTL, CODE_TRIES,
 };
