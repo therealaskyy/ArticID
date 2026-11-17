@@ -46,6 +46,7 @@ function ipKey(req) {
 }
 
 async function limit(key, max, windowSec) {
+  if (process.env.RATE_LIMIT_OFF === '1') return true; // testing only: turn off anti-abuse limits
   const k = 'rl:' + key;
   const n = await redis.incr(k);
   if (n === 1) await redis.expire(k, windowSec);
