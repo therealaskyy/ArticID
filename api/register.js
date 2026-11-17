@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
       nick, email, birthdate: birth, passHash: await L.hashPassword(password),
       termsAcceptedAt: new Date().toISOString(),
     });
-    if (c.error) return L.send(res, c.status, { error: c.error });
+    if (c.error) { await L.redis.decr('rl:reg:' + L.ipKey(req)); return L.send(res, c.status, { error: c.error }); }
     return L.send(res, 200, { step: 'code', challenge: c.id });
   } catch (e) {
     console.error('register', e);

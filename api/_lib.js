@@ -255,7 +255,7 @@ async function startChallenge(purpose, email, data) {
   const ok = await sendEmail(email, code + ' is your Artic ID code',
     'Hi!\n\nYour verification code to ' + PURPOSE_TEXT[purpose] + ' is:\n\n' + code + '\n\n' + note + '\n\nArtic Studio',
     { heading: 'Your verification code', intro: 'Use this code to ' + PURPOSE_TEXT[purpose] + ':', code, note }, 'code');
-  if (!ok) { await redis.del(k); return { status: 503, error: 'We couldn’t send the email. Please try again later.' }; }
+  if (!ok) { await redis.del(k); await redis.decr('rl:code-mail:' + sha(email)); return { status: 503, error: 'We couldn’t send the email. Please try again later.' }; }
   return { id };
 }
 
