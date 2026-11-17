@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
     const uid = await L.redis.get('email:' + email);
     if (!uid) return L.send(res, 200, generic);
 
-    if (!process.env.RESEND_API_KEY)
+    if (!L.emailConfigured())
       return L.send(res, 503, { error: 'Password recovery isn’t available yet. Please contact support.' });
 
     const token = L.crypto.randomBytes(32).toString('base64url');

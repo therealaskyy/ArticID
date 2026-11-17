@@ -171,18 +171,55 @@ function cors(req, res) {
 const CODE_TTL = 600; // 10 minutes
 const CODE_TRIES = 5;
 
+// Email provider: EmailJS (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY), else Brevo, else Resend.
+// Brevo (BREVO_API_KEY + BREVO_FROM_EMAIL [+ BREVO_FROM_NAME]) or Resend (RESEND_API_KEY + RESEND_FROM).
+// Brevo only needs one verified sender address, no domain of your own.
+const emailjsReady = () => !!(process.env.EMAILJS_SERVICE_ID && process.env.EMAILJS_TEMPLATE_ID &&
+  process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY);
+const emailConfigured = () => emailjsReady() || !!(process.env.BREVO_API_KEY || process.env.RESEND_API_KEY);
+
 async function sendEmail(to, subject, text) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) { console.error('RESEND_API_KEY missing: cannot send email'); return false; }
   try {
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: process.env.RESEND_FROM, to: [to], subject, text }),
-    });
-    if (!r.ok) console.error('resend', r.status, await r.text());
-    return r.ok;
-  } catch (e) { console.error('resend', e); return false; }
+    if (emailjsReady()) {
+      // Template variables: {{to_email}}, {{subject}}, {{message}}
+      const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: process.env.EMAILJS_SERVICE_ID,
+          template_id: process.env.EMAILJS_TEMPLATE_ID,
+          user_id: process.env.EMAILJS_PUBLIC_KEY,
+          accessToken: process.env.EMAILJS_PRIVATE_KEY,
+          template_params: { to_email: to, subject, message: text },
+        }),
+      });
+      if (!r.ok) console.error('emailjs', r.status, await r.text());
+      return r.ok;
+    }
+    if (process.env.BREVO_API_KEY) {
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          sender: { name: process.env.BREVO_FROM_NAME || 'Artic ID', email: process.env.BREVO_FROM_EMAIL },
+          to: [{ email: to }], subject, textContent: text,
+        }),
+      });
+      if (!r.ok) console.error('brevo', r.status, await r.text());
+      return r.ok;
+    }
+    if (process.env.RESEND_API_KEY) {
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: process.env.RESEND_FROM, to: [to], subject, text }),
+      });
+      if (!r.ok) console.error('resend', r.status, await r.text());
+      return r.ok;
+    }
+    console.error('No email provider configured: set the EMAILJS_* variables (or BREVO_API_KEY / RESEND_API_KEY)');
+    return false;
+  } catch (e) { console.error('email', e); return false; }
 }
 
 const PURPOSE_TEXT = {
@@ -212,5 +249,5 @@ module.exports = {
   redis, crypto, send, methodOnly, sameOrigin, ipKey, limit, sha, hashPassword, verifyPassword,
   dummyVerify, setSessionCookie, clearSessionCookie, createSession, getSession, destroySession,
   destroyUserSessions, getUser, publicUser, ageFrom, newAid, EMAIL_RE, NICK_RE, SLOT_RE, passwordOk,
-  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION, sendEmail, startChallenge, CODE_TTL, CODE_TRIES,
+  allowedOrigins, cors, body, MIN_AGE, TERMS_VERSION, sendEmail, emailConfigured, startChallenge, CODE_TTL, CODE_TRIES,
 };
